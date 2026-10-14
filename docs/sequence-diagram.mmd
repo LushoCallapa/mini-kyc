@@ -1,0 +1,24 @@
+
+sequenceDiagram
+    actor User
+    participant Frontend
+    participant Backend
+    participant OCR as OCR Service
+    participant Database
+
+    User->>Frontend: Enter email and upload document
+    Frontend->>Backend: Submit registration request
+    Backend->>Backend: Validate request
+    Backend->>OCR: Submit identity document
+    OCR-->>Backend: Return extracted information
+    Backend->>Backend: Validate extracted data
+
+    alt Valid data
+        Backend->>Database: Store registration
+        Database-->>Backend: Return registration ID
+        Backend-->>Frontend: Registration successful
+        Frontend-->>User: Display confirmation
+    else Invalid data
+        Backend-->>Frontend: Return validation error
+        Frontend-->>User: Display error message
+    end
