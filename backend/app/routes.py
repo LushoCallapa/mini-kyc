@@ -2,6 +2,9 @@ from fastapi import APIRouter, HTTPException, File, UploadFile
 from sqlalchemy.exc import SQLAlchemyError
 from app.services.ocr_service import extract_document_data
 from app.database import check_database_connection
+from pydantic import ValidationError
+from app.schemas import DocumentData
+
 
 router = APIRouter()
 
@@ -27,7 +30,6 @@ def database_health_check():
             status_code=503,
             detail="Database connection failed"
         )
-
 
 @router.post("/ocr/extract")
 async def extract_document_text(file: UploadFile = File(...)):
@@ -55,12 +57,31 @@ async def extract_document_text(file: UploadFile = File(...)):
 
     try:
         document_data = extract_document_data(content, file.content_type)
+
+        validated_data = DocumentData.model_validate(document_data)
+
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="The document data is incomplete or invalid."
+        ) from exc
+
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc)
+        ) from exc
+
     except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc)
+        ) from exc
+
+    finally:
+        await file.close()
 
     return {
         "filename": file.filename,
-        "document_data": document_data
+        "document_data": validated_data.model_dump()
     }
