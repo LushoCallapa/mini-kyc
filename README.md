@@ -29,7 +29,19 @@ Optical Character Recognition (OCR).
 - `database/`: Database schema and stored procedures.
 - `docs/`: Technical documentation and design diagrams.
 
-## Development Status
+## Backend Setup
 
-The project is currently in the initial setup and
-system design stage.
+The backend uses Python and FastAPI.
+
+### Requirements
+
+- Python 3.10 or later
+- pip
+
+### Installation
+
+```bash
+cd backend
+python -m venv .venv
+pip install -r requirements.txt
+python run.py.
