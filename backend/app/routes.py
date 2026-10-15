@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from sqlalchemy.exc import SQLAlchemyError
+from app.database import check_database_connection
 
 router = APIRouter()
 
@@ -9,3 +11,18 @@ def health_check():
         "status": "ok",
         "service": "mini-kyc-api"
     }
+
+
+@router.get("/health/database")
+def database_health_check():
+    try:
+        check_database_connection()
+        return {
+            "status": "ok",
+            "database": "connected"
+        }
+    except SQLAlchemyError:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection failed"
+        )

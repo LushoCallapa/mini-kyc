@@ -45,3 +45,19 @@ cd backend
 python -m venv .venv
 pip install -r requirements.txt
 python run.py.
+
+## Database Connection
+
+The backend connects to MySQL using SQLAlchemy and PyMySQL.
+
+Configure the following environment variables in `backend/.env`:
+
+- `DB_HOST`
+- `DB_PORT`
+- `DB_NAME`
+- `DB_USER`
+- `DB_PASSWORD`
+
+### Database Health Check
+
+`GET /health/database` verifies the connection to MySQL.
