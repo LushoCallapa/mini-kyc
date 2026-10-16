@@ -38,7 +38,7 @@ export default function RegistrationsList() {
           <table className="records-table">
             <thead>
               <tr>
-                <th scope="col">ID</th>
+                <th scope="col">#</th>
                 <th scope="col">Full name</th>
                 <th scope="col">Email</th>
                 <th scope="col">Document</th>
@@ -47,9 +47,9 @@ export default function RegistrationsList() {
             </thead>
 
             <tbody>
-              {records.map((record) => (
+              {records.map((record, index) => (
                 <tr key={record.id}>
-                  <td>{record.id}</td>
+                  <td>{records.length - index}</td>
                   <td>{record.full_name}</td>
                   <td>{record.email}</td>
                   <td>{record.document_number}</td>
