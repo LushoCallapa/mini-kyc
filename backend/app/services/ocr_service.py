@@ -1,10 +1,10 @@
-
 import json
 import logging
-import os
 
 from google import genai
 from google.genai import types
+
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,18 +27,14 @@ Return only a JSON object:
 Preserve names and document numbers as they appear.
 """
 
+
 def extract_document_data(file_content: bytes, mime_type: str) -> dict:
-    api_key = os.getenv("GEMINI_API_KEY")
-    model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
-
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is not configured.")
-
-    client = genai.Client(api_key=api_key)
+    settings = get_settings()
+    client = genai.Client(api_key=settings.gemini_api_key)
 
     try:
         response = client.models.generate_content(
-            model=model,
+            model=settings.gemini_model,
             contents=[
                 types.Part.from_bytes(
                     data=file_content,
@@ -66,5 +62,5 @@ def extract_document_data(file_content: bytes, mime_type: str) -> dict:
         }
 
     except Exception:
-        logger.exception("Gemini OCR failed. Model: %s", model)
+        logger.exception("Gemini OCR failed. Model: %s", settings.gemini_model)
         raise

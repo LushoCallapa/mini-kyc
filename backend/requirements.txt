@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 python-multipart
 pydantic[email]
+pydantic-settings
 sqlalchemy
 pymysql
 python-dotenv

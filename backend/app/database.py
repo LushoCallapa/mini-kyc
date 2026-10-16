@@ -1,19 +1,17 @@
-import os
-from pathlib import Path
-
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+from app.config import get_settings
+
+settings = get_settings()
 
 database_url = URL.create(
     drivername="mysql+pymysql",
-    username=os.getenv("DB_USER"),
-    password=os.getenv("DB_PASSWORD"),
-    host=os.getenv("DB_HOST", "127.0.0.1"),
-    port=int(os.getenv("DB_PORT", "3306")),
-    database=os.getenv("DB_NAME", "mini_kyc"),
+    username=settings.db_user,
+    password=settings.db_password,
+    host=settings.db_host,
+    port=settings.db_port,
+    database=settings.db_name,
 )
 
 engine = create_engine(
