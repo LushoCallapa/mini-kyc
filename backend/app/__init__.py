@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.error_handlers import register_error_handlers
-from app.routes import router
+from app.routers import health, ocr, registrations
 
 
 def create_app():
@@ -24,6 +24,9 @@ def create_app():
     )
 
     register_error_handlers(app)
-    app.include_router(router)
+
+    app.include_router(health.router)
+    app.include_router(ocr.router)
+    app.include_router(registrations.router)
 
     return app
