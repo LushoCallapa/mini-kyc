@@ -3,25 +3,21 @@ import asyncio
 from fastapi import APIRouter, File, Form, UploadFile, status
 from google.genai.errors import APIError
 from pydantic import EmailStr, ValidationError
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError
 
-from app.database import (
-    check_database_connection,
-    create_onboarding_record,
-)
+from app.database import check_database_connection
 from app.exceptions import (
     BlurryImageError,
     DatabaseUnavailableError,
-    DuplicateRegistrationError,
     EmptyFileError,
     FileTooLargeError,
     InvalidDocumentDataError,
     InvalidImageError,
     OcrInvalidResponseError,
     OcrServiceUnavailableError,
-    RegistrationPersistenceError,
     UnsupportedFileTypeError,
 )
+from app.repositories.registration_repository import create_onboarding_record
 from app.schemas import DocumentData, RegistrationCreate
 from app.services.image_validation import is_image_blurry
 from app.services.ocr_service import extract_document_data
@@ -93,30 +89,6 @@ async def extract_uploaded_document(file: UploadFile) -> DocumentData:
         raise OcrInvalidResponseError() from exc
 
 
-def save_registration(
-    email: str,
-    full_name: str,
-    document_number: str,
-) -> dict:
-    try:
-        return create_onboarding_record(
-            email=email,
-            full_name=full_name,
-            document_number=document_number,
-        )
-
-    except IntegrityError as exc:
-        raise DuplicateRegistrationError() from exc
-
-    except SQLAlchemyError as exc:
-        raise RegistrationPersistenceError() from exc
-
-    except RuntimeError as exc:
-        raise RegistrationPersistenceError(
-            "Could not retrieve the created registration."
-        ) from exc
-
-
 @router.post("/ocr/extract")
 async def extract_document_text(file: UploadFile = File(...)):
     try:
@@ -135,7 +107,7 @@ async def extract_document_text(file: UploadFile = File(...)):
     status_code=status.HTTP_201_CREATED,
 )
 def create_registration(registration: RegistrationCreate):
-    record = save_registration(
+    record = create_onboarding_record(
         email=str(registration.email),
         full_name=registration.full_name,
         document_number=registration.document_number,
@@ -159,7 +131,7 @@ async def create_registration_with_document(
         document_data = await extract_uploaded_document(file)
 
         record = await asyncio.to_thread(
-            save_registration,
+            create_onboarding_record,
             str(email),
             document_data.full_name,
             document_data.document_number,
