@@ -1,32 +1,21 @@
 import asyncio
 
 from fastapi import APIRouter, File, Form, UploadFile, status
-from google.genai.errors import APIError
-from pydantic import EmailStr, ValidationError
+from pydantic import EmailStr
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import check_database_connection
-from app.exceptions import (
-    BlurryImageError,
-    DatabaseUnavailableError,
-    EmptyFileError,
-    FileTooLargeError,
-    InvalidDocumentDataError,
-    InvalidImageError,
-    OcrInvalidResponseError,
-    OcrServiceUnavailableError,
-    UnsupportedFileTypeError,
+from app.exceptions import DatabaseUnavailableError
+from app.schemas import RegistrationCreate
+from app.services.document_service import extract_document_from_image
+from app.services.registration_service import (
+    register_client,
+    register_from_document,
 )
-from app.repositories.registration_repository import create_onboarding_record
-from app.schemas import DocumentData, RegistrationCreate
-from app.services.image_validation import is_image_blurry
-from app.services.ocr_service import extract_document_data
-
 
 router = APIRouter()
 
-ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
-MAX_FILE_SIZE = 5 * 1024 * 1024
+REGISTRATION_CREATED_MESSAGE = "Registration created successfully."
 
 
 @router.get("/health")
@@ -50,49 +39,16 @@ def database_health_check():
     }
 
 
-async def extract_uploaded_document(file: UploadFile) -> DocumentData:
-    if file.content_type not in ALLOWED_TYPES:
-        raise UnsupportedFileTypeError()
-
-    content = await file.read()
-
-    if not content:
-        raise EmptyFileError()
-
-    if len(content) > MAX_FILE_SIZE:
-        raise FileTooLargeError()
-
-    try:
-        blurry = await asyncio.to_thread(is_image_blurry, content)
-    except ValueError as exc:
-        raise InvalidImageError() from exc
-
-    if blurry:
-        raise BlurryImageError()
-
-    try:
-        document_data = await asyncio.to_thread(
-            extract_document_data,
-            content,
-            file.content_type,
-        )
-
-        return DocumentData.model_validate(document_data)
-
-    except ValidationError as exc:
-        raise InvalidDocumentDataError() from exc
-
-    except APIError as exc:
-        raise OcrServiceUnavailableError() from exc
-
-    except ValueError as exc:
-        raise OcrInvalidResponseError() from exc
-
-
 @router.post("/ocr/extract")
 async def extract_document_text(file: UploadFile = File(...)):
     try:
-        document_data = await extract_uploaded_document(file)
+        content = await file.read()
+
+        document_data = await asyncio.to_thread(
+            extract_document_from_image,
+            content,
+            file.content_type,
+        )
 
         return {
             "filename": file.filename,
@@ -107,7 +63,7 @@ async def extract_document_text(file: UploadFile = File(...)):
     status_code=status.HTTP_201_CREATED,
 )
 def create_registration(registration: RegistrationCreate):
-    record = create_onboarding_record(
+    record = register_client(
         email=str(registration.email),
         full_name=registration.full_name,
         document_number=registration.document_number,
@@ -115,7 +71,7 @@ def create_registration(registration: RegistrationCreate):
 
     return {
         **record,
-        "message": "Registration created successfully.",
+        "message": REGISTRATION_CREATED_MESSAGE,
     }
 
 
@@ -128,18 +84,18 @@ async def create_registration_with_document(
     file: UploadFile = File(...),
 ):
     try:
-        document_data = await extract_uploaded_document(file)
+        content = await file.read()
 
         record = await asyncio.to_thread(
-            create_onboarding_record,
+            register_from_document,
             str(email),
-            document_data.full_name,
-            document_data.document_number,
+            content,
+            file.content_type,
         )
 
         return {
             **record,
-            "message": "Registration created successfully.",
+            "message": REGISTRATION_CREATED_MESSAGE,
         }
     finally:
         await file.close()
