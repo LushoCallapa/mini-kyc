@@ -1,46 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  Formik,
-  Form,
-  Field,
-  ErrorMessage,
-  type FormikHelpers,
-} from "formik";
-import * as Yup from "yup";
+import { useRef, useState } from "react";
+import { Formik, Form, Field, ErrorMessage } from "formik";
 
-import { createRegistration } from "../services/registrationService";
-import type {
-  RegistrationFormData,
-  RegistrationResponse,
-} from "../types/registration";
+import { registrationSchema } from "../validation/registrationSchema";
+import { useRegistration } from "../hooks/useRegistration";
+import { useFilePreview } from "../hooks/useFilePreview";
+import { useScrollIntoViewOnMobile } from "../hooks/useScrollIntoViewOnMobile";
+import type { RegistrationFormData } from "../types/registration";
+import FileUploadField from "./FileUploadField";
 import RecognitionResult from "./RecognitionResult";
-
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-
-const ALLOWED_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-];
-
-const validationSchema = Yup.object({
-  email: Yup.string()
-    .email("Enter a valid email address.")
-    .required("Email is required."),
-
-  file: Yup.mixed<File>()
-    .required("Please select an identity document image.")
-    .test(
-      "file-type",
-      "Only JPEG, PNG, and WebP images are supported.",
-      (file) => !file || ALLOWED_TYPES.includes(file.type)
-    )
-    .test(
-      "file-size",
-      "The image must not exceed 5 MB.",
-      (file) => !file || file.size <= MAX_FILE_SIZE
-    ),
-});
 
 const initialValues: RegistrationFormData = {
   email: "",
@@ -48,62 +15,12 @@ const initialValues: RegistrationFormData = {
 };
 
 export default function RegistrationForm() {
-  const [result, setResult] = useState<RegistrationResponse | null>(null);
-  const [serverError, setServerError] = useState("");
+  const { result, serverError, submit, reset } = useRegistration();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const previewUrl = useFilePreview(selectedFile);
 
   const resultRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!selectedFile) {
-      setPreviewUrl(null);
-      return;
-    }
-
-    const objectUrl = URL.createObjectURL(selectedFile);
-    setPreviewUrl(objectUrl);
-
-    return () => {
-      URL.revokeObjectURL(objectUrl);
-    };
-  }, [selectedFile]);
-
-  useEffect(() => {
-    if (!result) return;
-
-    if (window.matchMedia("(max-width: 900px)").matches) {
-      resultRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }
-  }, [result]);
-
-  async function handleSubmit(
-    values: RegistrationFormData,
-    helpers: FormikHelpers<RegistrationFormData>
-  ) {
-    setResult(null);
-    setServerError("");
-
-    try {
-      const registration = await createRegistration({
-        email: values.email,
-        file: values.file,
-      });
-
-      setResult(registration);
-    } catch (error) {
-      setServerError(
-        error instanceof Error
-          ? error.message
-          : "Could not connect to the server."
-      );
-    } finally {
-      helpers.setSubmitting(false);
-    }
-  }
+  useScrollIntoViewOnMobile(resultRef, result !== null);
 
   function handleFileChange(
     file: File | null,
@@ -115,8 +32,7 @@ export default function RegistrationForm() {
   ) {
     setSelectedFile(file);
     setFieldValue("file", file);
-    setResult(null);
-    setServerError("");
+    reset();
   }
 
   return (
@@ -138,8 +54,8 @@ export default function RegistrationForm() {
 
         <Formik
           initialValues={initialValues}
-          validationSchema={validationSchema}
-          onSubmit={handleSubmit}
+          validationSchema={registrationSchema}
+          onSubmit={(values) => submit(values)}
         >
           {({ isSubmitting, setFieldValue, values }) => (
             <Form noValidate>
@@ -162,66 +78,12 @@ export default function RegistrationForm() {
                 />
               </div>
 
-              <div className="form-field">
-                <label htmlFor="file">Identity document</label>
-
-                <div className="upload-area">
-                  <input
-                    id="file"
-                    name="file"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="file-input"
-                    aria-describedby="file-hint"
-                    onChange={(event) => {
-                      const file =
-                        event.currentTarget.files?.[0] ?? null;
-
-                      handleFileChange(file, setFieldValue);
-                    }}
-                  />
-
-                  <label htmlFor="file" className="upload-label">
-                    <span className="upload-icon" aria-hidden="true">
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M12 16V4M7.5 8.5L12 4L16.5 8.5M4 15.5V19C4 19.55 4.45 20 5 20H19C19.55 20 20 19.55 20 19V15.5"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </span>
-
-                    <strong>
-                      {values.file
-                        ? "Choose another image"
-                        : "Upload your document"}
-                    </strong>
-
-                    <span>
-                      {values.file
-                        ? values.file.name
-                        : "Click or tap to select an image"}
-                    </span>
-                  </label>
-                </div>
-
-                <ErrorMessage
-                  name="file"
-                  component="p"
-                  className="field-error"
-                />
-
-                <p id="file-hint" className="hint">
-                  JPEG, PNG or WebP. Maximum size: 5 MB.
-                </p>
-              </div>
+              <FileUploadField
+                fileName={values.file?.name ?? null}
+                onFileChange={(file) =>
+                  handleFileChange(file, setFieldValue)
+                }
+              />
 
               {serverError && (
                 <div className="message error" role="alert">
