@@ -10,7 +10,9 @@ from app.database import (
     create_onboarding_record,
 )
 from app.schemas import DocumentData, RegistrationCreate
+from app.services.image_validation import is_image_blurry
 from app.services.ocr_service import extract_document_data
+
 
 router = APIRouter()
 
@@ -63,11 +65,29 @@ async def extract_uploaded_document(file: UploadFile) -> DocumentData:
         )
 
     try:
+        blurry = await asyncio.to_thread(
+            is_image_blurry,
+            content,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is not a valid image.",
+        ) from exc
+
+    if blurry:
+        raise HTTPException(
+            status_code=422,
+            detail="The image is too blurry. Please upload a clearer image.",
+        )
+
+    try:
         document_data = await asyncio.to_thread(
             extract_document_data,
             content,
             file.content_type,
         )
+
         return DocumentData.model_validate(document_data)
 
     except ValidationError as exc:
