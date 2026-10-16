@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, UploadFile, status
 from google.genai.errors import APIError
 from pydantic import EmailStr, ValidationError
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -8,6 +8,19 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.database import (
     check_database_connection,
     create_onboarding_record,
+)
+from app.exceptions import (
+    BlurryImageError,
+    DatabaseUnavailableError,
+    DuplicateRegistrationError,
+    EmptyFileError,
+    FileTooLargeError,
+    InvalidDocumentDataError,
+    InvalidImageError,
+    OcrInvalidResponseError,
+    OcrServiceUnavailableError,
+    RegistrationPersistenceError,
+    UnsupportedFileTypeError,
 )
 from app.schemas import DocumentData, RegistrationCreate
 from app.services.image_validation import is_image_blurry
@@ -32,54 +45,34 @@ def health_check():
 def database_health_check():
     try:
         check_database_connection()
-        return {
-            "status": "ok",
-            "database": "connected",
-        }
     except SQLAlchemyError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Database connection failed.",
-        ) from exc
+        raise DatabaseUnavailableError() from exc
+
+    return {
+        "status": "ok",
+        "database": "connected",
+    }
 
 
 async def extract_uploaded_document(file: UploadFile) -> DocumentData:
     if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(
-            status_code=415,
-            detail="Only JPEG, PNG, and WebP images are supported.",
-        )
+        raise UnsupportedFileTypeError()
 
     content = await file.read()
 
     if not content:
-        raise HTTPException(
-            status_code=400,
-            detail="The uploaded file is empty.",
-        )
+        raise EmptyFileError()
 
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail="The uploaded file exceeds the 5 MB limit.",
-        )
+        raise FileTooLargeError()
 
     try:
-        blurry = await asyncio.to_thread(
-            is_image_blurry,
-            content,
-        )
+        blurry = await asyncio.to_thread(is_image_blurry, content)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail="The uploaded file is not a valid image.",
-        ) from exc
+        raise InvalidImageError() from exc
 
     if blurry:
-        raise HTTPException(
-            status_code=422,
-            detail="The image is too blurry. Please upload a clearer image.",
-        )
+        raise BlurryImageError()
 
     try:
         document_data = await asyncio.to_thread(
@@ -91,28 +84,13 @@ async def extract_uploaded_document(file: UploadFile) -> DocumentData:
         return DocumentData.model_validate(document_data)
 
     except ValidationError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail="The document data is incomplete or invalid.",
-        ) from exc
+        raise InvalidDocumentDataError() from exc
 
     except APIError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="The OCR service is temporarily unavailable. Please try again later.",
-        ) from exc
+        raise OcrServiceUnavailableError() from exc
 
     except ValueError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="The OCR service returned an invalid response.",
-        ) from exc
-
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="The OCR service is not configured.",
-        ) from exc
+        raise OcrInvalidResponseError() from exc
 
 
 def save_registration(
@@ -128,21 +106,14 @@ def save_registration(
         )
 
     except IntegrityError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail="Email or document number already registered.",
-        ) from exc
+        raise DuplicateRegistrationError() from exc
 
     except SQLAlchemyError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="Could not save the registration.",
-        ) from exc
+        raise RegistrationPersistenceError() from exc
 
     except RuntimeError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="Could not retrieve the created registration.",
+        raise RegistrationPersistenceError(
+            "Could not retrieve the created registration."
         ) from exc
 
 
