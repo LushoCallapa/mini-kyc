@@ -1,9 +1,11 @@
-import { postForm } from "./apiClient";
+import { getJson, postForm } from "./apiClient";
 import type {
   RegistrationFormData,
+  RegistrationRecord,
   RegistrationResponse,
 } from "../types/registration";
 
+const REGISTRATIONS_PATH = "/registrations";
 const REGISTRATION_WITH_DOCUMENT_PATH = "/registrations/with-document";
 
 export async function createRegistration(
@@ -21,4 +23,8 @@ export async function createRegistration(
     REGISTRATION_WITH_DOCUMENT_PATH,
     body
   );
+}
+
+export function listRegistrations(): Promise<RegistrationRecord[]> {
+  return getJson<RegistrationRecord[]>(REGISTRATIONS_PATH);
 }

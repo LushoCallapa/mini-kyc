@@ -24,6 +24,7 @@ function extractErrorMessage(data: unknown): string {
     return detail;
   }
 
+  // FastAPI validation errors (422) return detail as an array.
   if (Array.isArray(detail)) {
     const messages = detail
       .map((item) =>
@@ -44,14 +45,11 @@ function extractErrorMessage(data: unknown): string {
   return DEFAULT_ERROR_MESSAGE;
 }
 
-export async function postForm<T>(path: string, body: FormData): Promise<T> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
 
   try {
-    response = await fetch(`${env.apiUrl}${path}`, {
-      method: "POST",
-      body,
-    });
+    response = await fetch(`${env.apiUrl}${path}`, init);
   } catch {
     throw new ApiError(NETWORK_ERROR_MESSAGE, 0);
   }
@@ -63,4 +61,12 @@ export async function postForm<T>(path: string, body: FormData): Promise<T> {
   }
 
   return data as T;
+}
+
+export function getJson<T>(path: string): Promise<T> {
+  return request<T>(path);
+}
+
+export function postForm<T>(path: string, body: FormData): Promise<T> {
+  return request<T>(path, { method: "POST", body });
 }
