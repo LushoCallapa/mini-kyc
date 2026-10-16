@@ -1,4 +1,7 @@
-from app.repositories.registration_repository import create_onboarding_record
+from app.repositories.registration_repository import (
+    create_onboarding_record,
+    list_onboarding_records,
+)
 from app.services.document_service import extract_document_from_image
 
 
@@ -26,3 +29,7 @@ def register_from_document(
         full_name=document.full_name,
         document_number=document.document_number,
     )
+
+
+def list_registrations(limit: int) -> list[dict]:
+    return list_onboarding_records(limit)

@@ -1,10 +1,11 @@
 import asyncio
 
-from fastapi import APIRouter, File, Form, UploadFile, status
+from fastapi import APIRouter, File, Form, Query, UploadFile, status
 from pydantic import EmailStr
 
 from app.schemas import RegistrationCreate
 from app.services.registration_service import (
+    list_registrations,
     register_client,
     register_from_document,
 )
@@ -12,6 +13,11 @@ from app.services.registration_service import (
 router = APIRouter(prefix="/registrations", tags=["Registrations"])
 
 REGISTRATION_CREATED_MESSAGE = "Registration created successfully."
+
+
+@router.get("")
+def get_registrations(limit: int = Query(default=100, ge=1, le=500)):
+    return list_registrations(limit)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

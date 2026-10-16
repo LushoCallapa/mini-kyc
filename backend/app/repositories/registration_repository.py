@@ -3,6 +3,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.database import engine
 from app.exceptions import (
+    DatabaseUnavailableError,
     DuplicateRegistrationError,
     RegistrationPersistenceError,
 )
@@ -49,3 +50,20 @@ def create_onboarding_record(
         )
 
     return dict(record)
+
+
+def list_onboarding_records(limit: int) -> list[dict]:
+    query = text("""
+        SELECT id, email, full_name, document_number, created_at
+        FROM onboarding_records
+        ORDER BY created_at DESC, id DESC
+        LIMIT :limit
+    """)
+
+    try:
+        with engine.connect() as connection:
+            rows = connection.execute(query, {"limit": limit}).mappings().all()
+    except SQLAlchemyError as exc:
+        raise DatabaseUnavailableError() from exc
+
+    return [dict(row) for row in rows]
