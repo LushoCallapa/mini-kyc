@@ -1,3 +1,7 @@
+CREATE DATABASE IF NOT EXISTS mini_kyc
+    CHARACTER SET utf8mb4
+    COLLATE utf8mb4_unicode_ci;
+
 USE mini_kyc;
 
 CREATE TABLE IF NOT EXISTS onboarding_records (
