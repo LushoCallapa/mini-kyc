@@ -2,18 +2,20 @@
 
 Identity registration and document verification using OCR and artificial intelligence.
 
-Mini KYC is a web application that allows users to register their identity by providing an email address and an image of an identity document. The backend extracts the document information using Google's Gemini API, validates the extracted data, and stores the registration in a MySQL database.
+Mini KYC is a web application that allows users to register their identity by providing an email address and an image of an identity document. The backend extracts the document information using Google's Gemini API, validates the extracted data, and stores the registration in a MySQL database through a stored procedure.
 
 ## Features
 
 - **Identity registration:** Register users using an email address and identity document.
 - **OCR integration:** Extract the full name and document number from document images using Gemini.
+- **Blurry image detection:** Reject low-quality images before calling the OCR service.
 - **Data validation:** Validate extracted fields before saving them.
 - **Duplicate prevention:** Enforce unique email addresses and document numbers.
-- **REST API:** Provide endpoints for registration, OCR extraction, and health checks.
+- **Stored procedure persistence:** Registrations are saved through `sp_create_onboarding_record`.
+- **REST API:** Provide endpoints for registration, OCR extraction, and health checks, documented with Swagger.
 - **Frontend validation:** Validate email addresses, file types, and image sizes.
-- **Environment configuration:** Keep API URLs and credentials configurable through environment variables.
-- **CORS configuration:** Allow requests from the local frontend development server.
+- **Environment configuration:** All settings and credentials are loaded from environment variables.
+- **CORS configuration:** Allowed origins are configurable through `CORS_ORIGINS`.
 
 ## Technologies
 
@@ -31,7 +33,8 @@ Mini KYC is a web application that allows users to register their identity by pr
 - Uvicorn
 - SQLAlchemy
 - PyMySQL
-- Pydantic
+- Pydantic and pydantic-settings
+- OpenCV (blur detection)
 - Google Gen AI SDK
 
 ### Database and infrastructure
@@ -39,17 +42,61 @@ Mini KYC is a web application that allows users to register their identity by pr
 - Docker Compose
 - Google Gemini API
 
+## Stack justification
+
+- **React + TypeScript + Vite:** component-based UI with static typing and a fast development workflow.
+- **Formik + Yup:** declarative form handling and a validation schema kept outside the component.
+- **FastAPI:** native `multipart/form-data` support, Pydantic validation, and automatic Swagger documentation.
+- **MySQL + stored procedures:** relational model with unique constraints and persistence encapsulated in the database.
+- **Gemini:** multimodal model that extracts structured fields directly from the document image.
+- **Docker Compose:** reproducible local database.
+
+## Architecture
+
+The backend separates responsibilities into layers. Each layer only depends on the one below it.
+
+```text
+Router  ->  Service  ->  Repository  ->  Stored procedure (MySQL)
+                |
+                +------>  OCR service (Gemini)
+```
+
+- **Routers (`routers/`):** receive HTTP requests, read uploaded files, and return responses. They contain no business logic.
+- **Services (`services/`):** business logic. File validation, blur detection, OCR extraction, and registration flow. They know nothing about HTTP.
+- **Repositories (`repositories/`):** data access. Calls the stored procedure and translates database errors into domain errors.
+- **Exceptions (`exceptions.py`):** domain errors raised by services and repositories.
+- **Error handlers (`error_handlers.py`):** a single place that maps domain errors to HTTP responses.
+- **Config (`config.py`):** all settings are read once from environment variables.
+
+The frontend follows the same idea:
+
+- **Components:** presentation only.
+- **Hooks:** state and side effects (`useRegistration`, `useFilePreview`, `useScrollIntoViewOnMobile`).
+- **Services:** HTTP communication (`apiClient`, `registrationService`).
+- **Validation and config:** form schema and constants kept outside components.
+
 ## Project structure
 
 ```text
 mini-kyc/
 ├── backend/
 │   ├── app/
+│   │   ├── routers/
+│   │   │   ├── health.py
+│   │   │   ├── ocr.py
+│   │   │   └── registrations.py
 │   │   ├── services/
-│   │   │   └── ocr_service.py
+│   │   │   ├── document_service.py
+│   │   │   ├── image_validation.py
+│   │   │   ├── ocr_service.py
+│   │   │   └── registration_service.py
+│   │   ├── repositories/
+│   │   │   └── registration_repository.py
 │   │   ├── __init__.py
+│   │   ├── config.py
 │   │   ├── database.py
-│   │   ├── routes.py
+│   │   ├── error_handlers.py
+│   │   ├── exceptions.py
 │   │   └── schemas.py
 │   ├── .env.example
 │   ├── requirements.txt
@@ -62,9 +109,25 @@ mini-kyc/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
+│   │   │   ├── icons/
+│   │   │   ├── FileUploadField.tsx
+│   │   │   ├── Navbar.tsx
+│   │   │   ├── RecognitionResult.tsx
+│   │   │   └── RegistrationForm.tsx
 │   │   ├── config/
+│   │   │   ├── env.ts
+│   │   │   ├── layout.ts
+│   │   │   └── upload.ts
+│   │   ├── hooks/
+│   │   │   ├── useFilePreview.ts
+│   │   │   ├── useRegistration.ts
+│   │   │   └── useScrollIntoViewOnMobile.ts
 │   │   ├── services/
+│   │   │   ├── apiClient.ts
+│   │   │   └── registrationService.ts
 │   │   ├── types/
+│   │   ├── validation/
+│   │   │   └── registrationSchema.ts
 │   │   ├── App.tsx
 │   │   ├── App.css
 │   │   └── main.tsx
@@ -91,11 +154,9 @@ Install the following tools before running the project:
 ### 1. Clone the repository
 
 ```bash
-git clone <REPOSITORY_URL>
+git clone https://github.com/LushoCallapa/mini-kyc.git
 cd mini-kyc
 ```
-
-Replace `<REPOSITORY_URL>` with the URL of your repository.
 
 ### 2. Configure the root environment
 
@@ -120,9 +181,15 @@ DB_PASSWORD=your_mysql_password
 
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.1-flash-lite
+
+CORS_ORIGINS=http://localhost:5173
 ```
 
 Make sure `DB_PASSWORD` matches `MYSQL_ROOT_PASSWORD` and replace the Gemini API key with your own.
+
+All variables are required. The API will not start if one is missing.
+
+`CORS_ORIGINS` accepts several origins separated by commas. When you deploy, set it to the public URL of the frontend.
 
 The Gemini model shown above is an example. Use a model ID currently supported by your API key and account.
 
@@ -162,7 +229,7 @@ docker exec -e MYSQL_PWD=your_mysql_password -i mini-kyc-mysql mysql -u root < d
 
 Replace `your_mysql_password` with the value configured in the root `.env` file.
 
-The schema creates the `mini_kyc` database and the `onboarding_records` table, including unique constraints for email addresses and document numbers.
+The schema creates the `mini_kyc` database, the `onboarding_records` table (with unique constraints for email addresses and document numbers), and the `sp_create_onboarding_record` stored procedure.
 
 > **Note:** If your existing database already contains data, review the SQL before applying any changes that could delete or recreate tables.
 
@@ -208,8 +275,7 @@ python run.py
 The backend will be available at:
 
 - API base URL: `http://127.0.0.1:8000`
-- Interactive API documentation: `http://127.0.0.1:8000/docs`
-- Alternative API documentation: `http://127.0.0.1:8000/redoc`
+- Interactive API documentation (Swagger): `http://127.0.0.1:8000/docs`
 
 ## Frontend setup
 
@@ -258,7 +324,7 @@ The endpoint `POST /registrations/with-document` expects a `multipart/form-data`
 
 Supported image formats are JPEG, PNG, and WebP, with a maximum size of 5 MB.
 
-The backend processes the image, validates the extracted fields, and attempts to save the registration in MySQL. Duplicate email addresses or document numbers are rejected.
+The backend validates the image, extracts the data with Gemini, validates the extracted fields, and saves the registration in MySQL. Duplicate email addresses or document numbers are rejected.
 
 ### Example request
 
@@ -276,24 +342,30 @@ Replace `document.jpg` with the path to an image you are authorized to use for t
 1. The user enters an email address and selects an identity document image.
 2. The frontend validates the email, file type, and file size.
 3. The frontend sends the form to the FastAPI backend.
-4. The backend sends the image to Gemini for OCR extraction.
-5. The backend validates the extracted full name and document number.
-6. The backend checks database constraints and saves the registration.
-7. The API returns the registration result or an appropriate error response.
-8. The frontend displays the result to the user.
+4. The backend validates the file type, size, and sharpness.
+5. The backend sends the image to Gemini for OCR extraction.
+6. The backend validates the extracted full name and document number.
+7. The repository calls the stored procedure, which checks database constraints and saves the registration.
+8. The API returns the registration result or an appropriate error response.
+9. The frontend displays the result to the user.
 
 ## Validation and error handling
 
-The application validates data at both the frontend and backend levels.
+The application validates data at both the frontend and backend levels. The backend never returns a generic 500 for invalid input: services raise domain errors and a global handler converts them into controlled responses.
 
-- Invalid email addresses are rejected.
-- Empty extracted fields are rejected.
-- Unsupported image formats are rejected.
-- Images larger than 5 MB are rejected.
-- Duplicate emails and document numbers are rejected.
-- OCR service failures are handled by the backend.
-- Database connection and persistence errors are handled by the API.
-
+| Case | HTTP status |
+|---|---|
+| Unsupported file type | 415 |
+| Empty file | 400 |
+| File larger than 5 MB | 413 |
+| File is not a valid image | 400 |
+| Blurry image | 422 |
+| Incomplete or invalid extracted data | 422 |
+| OCR service unavailable | 503 |
+| OCR service invalid response | 502 |
+| Duplicate email or document number | 409 |
+| Could not save the registration | 500 |
+| Database unavailable | 503 |
 
 ## Development status
 
